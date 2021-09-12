@@ -17,27 +17,31 @@ export class CdkEksWebStack extends cdk.Stack {
     const adminUser = iam.User.fromUserName(this, 'adminUser', 'clarence');
     cluster.awsAuth.addUserMapping(adminUser, { groups: ['system:masters'] });
 
-    cluster.addNodegroupCapacity('gpu', {
-      instanceTypes: [new ec2.InstanceType('p2.xlarge')],
+    cluster.addNodegroupCapacity('inf', {
+      instanceTypes: [new ec2.InstanceType('inf1.xlarge')],
       capacityType: eks.CapacityType.SPOT,
-      amiType: eks.NodegroupAmiType.AL2_X86_64_GPU,
       diskSize: 100,
     });
-    const nvidiaDevicePlugin = fs.readFileSync(path.join(__dirname, '../lib', 'addons/nvidia-device-plugin.yml'), 'utf8');
-    const nvidiaManifests = YAML.parse(nvidiaDevicePlugin);
-    cluster.addManifest(`nvidia-device-plugin`, nvidiaManifests);
+    const neuronDevicePlugin = fs.readFileSync(path.join(__dirname, '../lib', 'addons/neuron-device-plugin.yaml'), 'utf8');
+    const neuronManifests = YAML.parseAllDocuments(neuronDevicePlugin);
+    let i = 0
+    neuronManifests.forEach((item) => {
+      cluster.addManifest(`neuron-device-plugin-${i++}`, item.contents?.toJSON());
+    })
 
-    cluster.addManifest('nvidia-smi', {
+    cluster.addManifest('neuron-rtd', {
       apiVersion: 'v1',
       kind: 'Pod',
-      metadata: { name: 'nvidia-smi' },
+      metadata: { name: 'neuron-rtd' },
       spec: {
         restartPolicy: 'OnFailure',
         containers: [{
-          name: 'nvidia-smi',
-          image: 'nvidia/cuda:11.4.1-cudnn8-devel-ubuntu20.04',
-          args: ['nvidia-smi'],
-          resources: { limits: { 'nvidia.com/gpu': 1 } }
+          name: 'neuron-rtd',
+          image: 'clarencetw/neuron-test:master',
+          securityContext: {
+            capabilities: { add: ["IPC_LOCK"] }
+          },
+          resources: { limits: { 'aws.amazon.com/neuron': 1 } },
         }]
       }
     });
