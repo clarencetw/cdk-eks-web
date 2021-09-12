@@ -9,9 +9,10 @@ export class CdkEksWebStack extends cdk.Stack {
 
     const cluster = new eks.Cluster(this, 'eks', {
       version: eks.KubernetesVersion.V1_21,
+      defaultCapacity: 0
     });
     const adminUser = iam.User.fromUserName(this, 'adminUser', 'clarence');
-    cluster.awsAuth.addUserMapping(adminUser, { groups: [ 'system:masters' ]});
+    cluster.awsAuth.addUserMapping(adminUser, { groups: ['system:masters'] });
 
     cluster.addNodegroupCapacity('spot', {
       instanceTypes: [
@@ -20,6 +21,11 @@ export class CdkEksWebStack extends cdk.Stack {
         new ec2.InstanceType('c5d.large'),
       ],
       capacityType: eks.CapacityType.SPOT,
+      taints: [{
+        effect: eks.TaintEffect.NO_SCHEDULE,
+        key: 'type',
+        value: 'spot',
+      }],
     });
   }
 }
