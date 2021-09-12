@@ -17,14 +17,16 @@ export class CdkEksWebStack extends cdk.Stack {
     const adminUser = iam.User.fromUserName(this, 'adminUser', 'clarence');
     cluster.awsAuth.addUserMapping(adminUser, { groups: ['system:masters'] });
 
-    cluster.addNodegroupCapacity('gpu', {
-      instanceTypes: [new ec2.InstanceType('p2.xlarge')],
+    cluster.addNodegroupCapacity('inf', {
+      instanceTypes: [new ec2.InstanceType('inf1.xlarge')],
       capacityType: eks.CapacityType.SPOT,
-      amiType: eks.NodegroupAmiType.AL2_X86_64_GPU,
       diskSize: 100,
     });
-    const nvidiaDevicePlugin = fs.readFileSync(path.join(__dirname, '../lib', 'addons/nvidia-device-plugin.yml'), 'utf8');
-    const nvidiaManifests = YAML.parse(nvidiaDevicePlugin);
-    cluster.addManifest(`nvidia-device-plugin`, nvidiaManifests);
+    const neuronDevicePlugin = fs.readFileSync(path.join(__dirname, '../lib', 'addons/neuron-device-plugin.yaml'), 'utf8');
+    const neuronManifests = YAML.parseAllDocuments(neuronDevicePlugin);
+    let i = 0
+    neuronManifests.forEach((item) => {
+      cluster.addManifest(`neuron-device-plugin-${i++}`, item.contents?.toJSON());
+    })
   }
 }
