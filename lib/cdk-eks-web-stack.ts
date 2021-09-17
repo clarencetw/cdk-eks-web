@@ -2,9 +2,6 @@ import * as cdk from '@aws-cdk/core';
 import * as eks from '@aws-cdk/aws-eks';
 import * as iam from '@aws-cdk/aws-iam';
 import * as ec2 from '@aws-cdk/aws-ec2';
-import * as fs from 'fs';
-import * as YAML from 'yaml';
-import * as path from 'path';
 
 export class CdkEksWebStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
@@ -17,33 +14,49 @@ export class CdkEksWebStack extends cdk.Stack {
     const adminUser = iam.User.fromUserName(this, 'adminUser', 'clarence');
     cluster.awsAuth.addUserMapping(adminUser, { groups: ['system:masters'] });
 
-    cluster.addNodegroupCapacity('inf', {
-      instanceTypes: [new ec2.InstanceType('inf1.xlarge')],
+    cluster.addNodegroupCapacity('spot', {
+      instanceTypes: [
+        new ec2.InstanceType('c5.large'),
+        new ec2.InstanceType('c5a.large'),
+        new ec2.InstanceType('c5d.large'),
+      ],
       capacityType: eks.CapacityType.SPOT,
-      diskSize: 100,
     });
-    const neuronDevicePlugin = fs.readFileSync(path.join(__dirname, '../lib', 'addons/neuron-device-plugin.yaml'), 'utf8');
-    const neuronManifests = YAML.parseAllDocuments(neuronDevicePlugin);
-    let i = 0
-    neuronManifests.forEach((item) => {
-      cluster.addManifest(`neuron-device-plugin-${i++}`, item.contents?.toJSON());
-    })
 
-    cluster.addManifest('neuron-rtd', {
-      apiVersion: 'v1',
-      kind: 'Pod',
-      metadata: { name: 'neuron-rtd' },
+    const appLabel = { app: "hello-kubernetes" };
+    const deployment = {
+      apiVersion: "apps/v1",
+      kind: "Deployment",
+      metadata: { name: "hello-kubernetes" },
       spec: {
-        restartPolicy: 'OnFailure',
-        containers: [{
-          name: 'neuron-rtd',
-          image: 'clarencetw/neuron-test:master',
-          securityContext: {
-            capabilities: { add: ["IPC_LOCK"] }
+        replicas: 3,
+        selector: { matchLabels: appLabel },
+        template: {
+          metadata: { labels: appLabel },
+          spec: {
+            containers: [{
+              name: "hello-kubernetes",
+              image: "paulbouwer/hello-kubernetes:1.5",
+              ports: [{ containerPort: 8080 }],
+            }],
           },
-          resources: { limits: { 'aws.amazon.com/neuron': 1 } },
-        }]
+        },
+      },
+    };
+    const service = {
+      apiVersion: "v1",
+      kind: "Service",
+      metadata: { name: "hello-kubernetes" },
+      spec: {
+        type: "LoadBalancer",
+        ports: [{ port: 80, targetPort: 8080 }],
+        selector: appLabel
       }
+    };
+    cluster.addManifest("mypod", service, deployment);
+
+    new cdk.CfnOutput(this, "LoadBalancer", {
+      value: cluster.getServiceLoadBalancerAddress("hello-kubernetes"),
     });
   }
 }
